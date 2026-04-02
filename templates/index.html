@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAF Simulator — Web Application Firewall</title>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #060a06;
+  --surface: #0a0f0a;
+  --card: #0f150f;
+  --card2: #141c14;
+  --border: #1a271a;
+  --green: #00ff41;
+  --green2: #39ff14;
+  --red: #ff2020;
+  --orange: #ff8c00;
+  --yellow: #ffe000;
+  --blue: #00bfff;
+  --text: #b8d4b8;
+  --muted: #3d5c3d;
+  --mono: 'Courier Prime', 'Courier New', monospace;
+  --sans: 'Exo 2', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+}
+/* matrix rain effect top */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+  animation: scanline 3s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 100;
+}
+@keyframes scanline { 0%,100%{opacity:0.3} 50%{opacity:1} }
+
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.logo {
+  font-family: var(--mono);
+  color: var(--green);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+.logo span { display: block; font-size: 10px; color: var(--muted); margin-top: 3px; }
+.mode-toggle { display: flex; gap: 6px; }
+.mode-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 6px 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  transition: all 0.15s;
+}
+.mode-btn.active.prevention { background: rgba(255,32,32,0.1); color: var(--red); border-color: rgba(255,32,32,0.3); }
+.mode-btn.active.detection  { background: rgba(0,191,255,0.1); color: var(--blue); border-color: rgba(0,191,255,0.3); }
+
+.main { max-width: 1280px; margin: 0 auto; padding: 24px 28px 60px; }
+
+/* Stats */
+.stats { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+.stat-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 20px;
+  flex: 1;
+  min-width: 120px;
+}
+.stat-box-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+.stat-box-val { font-family: var(--mono); font-size: 28px; color: var(--green); }
+.stat-box.red .stat-box-val { color: var(--red); }
+.stat-box.blue .stat-box-val { color: var(--blue); }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.tab {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  padding: 10px 20px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all 0.12s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--green); border-bottom-color: var(--green); }
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Inspector */
+.inspector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.inspector-left {}
+
+.input-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+.payload-input {
+  width: 100%;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  color: var(--green);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 14px;
+  border-radius: 4px;
+  resize: vertical;
+  min-height: 100px;
+  outline: none;
+  margin-bottom: 12px;
+  line-height: 1.6;
+  transition: border-color 0.15s;
+}
+.payload-input:focus { border-color: rgba(0,255,65,0.4); }
+.payload-input::placeholder { color: var(--muted); }
+
+.action-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.inspect-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 10px 22px;
+  background: rgba(0,255,65,0.1);
+  border: 1px solid rgba(0,255,65,0.3);
+  color: var(--green);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.inspect-btn:hover { background: rgba(0,255,65,0.18); }
+.clear-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.payloads-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+.payload-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.payload-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.12s;
+  letter-spacing: 0.04em;
+}
+.payload-chip.attack { color: var(--red); border-color: rgba(255,32,32,0.25); background: rgba(255,32,32,0.05); }
+.payload-chip.attack:hover { background: rgba(255,32,32,0.12); }
+.payload-chip.bypass { color: var(--orange); border-color: rgba(255,140,0,0.25); background: rgba(255,140,0,0.05); }
+.payload-chip.bypass:hover { background: rgba(255,140,0,0.12); }
+.payload-chip.safe { color: var(--green); border-color: rgba(0,255,65,0.2); background: rgba(0,255,65,0.04); }
+.payload-chip.safe:hover { background: rgba(0,255,65,0.1); }
+
+/* Result panel */
+.result-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.result-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.result-verdict {
+  font-size: 18px;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+}
+.result-verdict.BLOCKED  { color: var(--red); }
+.result-verdict.ALLOWED  { color: var(--green); }
+.result-verdict.LOGGED   { color: var(--blue); }
+.result-action { color: var(--muted); font-size: 11px; }
+
+.result-body { padding: 16px 18px; }
+
+.result-stat-row { display: flex; gap: 20px; margin-bottom: 16px; flex-wrap: wrap; }
+.result-stat { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.result-stat span { color: var(--text); }
+
+.triggered-label { font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+.triggered-rule {
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--red);
+  border-radius: 0 4px 4px 0;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.tr-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tr-id { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.tr-name { font-family: var(--mono); font-size: 11px; color: var(--text); flex: 1; }
+.tr-sev {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+.tr-sev.CRITICAL { background: rgba(255,32,32,0.15); color: var(--red); }
+.tr-sev.HIGH     { background: rgba(255,140,0,0.12); color: var(--orange); }
+.tr-sev.MEDIUM   { background: rgba(255,224,0,0.1);  color: var(--yellow); }
+.tr-matched { font-family: var(--mono); font-size: 11px; color: var(--orange); background: rgba(255,140,0,0.08); padding: 4px 8px; border-radius: 3px; margin-bottom: 6px; display: inline-block; }
+.tr-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+.clean-result { text-align: center; padding: 40px; }
+.clean-icon { font-size: 36px; margin-bottom: 12px; }
+.clean-text { font-family: var(--mono); font-size: 12px; color: var(--green); letter-spacing: 0.06em; }
+
+.waiting { text-align: center; padding: 40px; font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.08em; }
+
+/* Rules panel */
+.rules-grid { display: flex; flex-direction: column; gap: 8px; }
+.rule-row {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: 80px 160px 80px 1fr;
+  gap: 12px;
+  align-items: start;
+  font-size: 12px;
+}
+.rule-id { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.rule-name { font-weight: 500; color: var(--text); }
+.rule-cat {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  text-align: center;
+  color: var(--blue);
+  border: 1px solid rgba(0,191,255,0.2);
+  background: rgba(0,191,255,0.05);
+}
+.rule-desc { color: var(--muted); line-height: 1.5; }
+
+/* Bypasses panel */
+.bypass-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 14px; }
+.bypass-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--orange);
+  border-radius: 0 0 6px 6px;
+  padding: 16px 18px;
+}
+.bypass-name { font-weight: 600; font-size: 13px; color: var(--orange); margin-bottom: 8px; }
+.bypass-desc { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
+.code-compare { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.code-row { display: flex; gap: 8px; align-items: flex-start; }
+.code-label { font-family: var(--mono); font-size: 9px; color: var(--muted); width: 60px; flex-shrink: 0; padding-top: 3px; }
+.code-val { font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 3px; word-break: break-all; line-height: 1.5; }
+.code-val.original { background: rgba(0,255,65,0.06); color: var(--green); border: 1px solid rgba(0,255,65,0.15); }
+.code-val.bypass { background: rgba(255,140,0,0.06); color: var(--orange); border: 1px solid rgba(255,140,0,0.2); }
+.bypass-mitig { font-size: 11px; color: var(--green); background: rgba(0,255,65,0.05); border: 1px solid rgba(0,255,65,0.1); border-radius: 4px; padding: 8px 10px; line-height: 1.5; }
+.bypass-mitig::before { content: '✓ Fix: '; font-weight: 600; }
+
+@media(max-width:800px) {
+  .inspector-grid { grid-template-columns: 1fr; }
+  .rule-row { grid-template-columns: 1fr; }
+  .bypass-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    WAF SIMULATOR — WEB APPLICATION FIREWALL
+    <span>NIVEDHITHA KS — CYBERSECURITY PORTFOLIO</span>
+  </div>
+  <div class="mode-toggle">
+    <button class="mode-btn active prevention" id="btnPrev" onclick="setMode('prevention')">PREVENTION MODE</button>
+    <button class="mode-btn detection" id="btnDet" onclick="setMode('detection')">DETECTION MODE</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="stats">
+    <div class="stat-box"><div class="stat-box-label">WAF Rules</div><div class="stat-box-val" id="st-rules">8</div></div>
+    <div class="stat-box red"><div class="stat-box-label">Requests Blocked</div><div class="stat-box-val" id="st-blocked">0</div></div>
+    <div class="stat-box"><div class="stat-box-label">Requests Allowed</div><div class="stat-box-val" id="st-allowed">0</div></div>
+    <div class="stat-box blue"><div class="stat-box-label">Mode</div><div class="stat-box-val" id="st-mode" style="font-size:16px;padding-top:6px">PREVENTION</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('inspector',this)">REQUEST INSPECTOR</button>
+    <button class="tab" onclick="showTab('rules',this)">WAF RULES (8)</button>
+    <button class="tab" onclick="showTab('bypasses',this)">BYPASS TECHNIQUES (6)</button>
+  </div>
+
+  <!-- Inspector -->
+  <div class="panel active" id="panel-inspector">
+    <div class="inspector-grid">
+      <div class="inspector-left">
+        <div class="input-label">Payload / Request Input</div>
+        <textarea class="payload-input" id="payloadInput"
+          placeholder="Enter a payload to test against the WAF...&#10;&#10;Try: ' OR '1'='1&#10;Or: &lt;script&gt;alert(1)&lt;/script&gt;&#10;Or: ../../../../etc/passwd"></textarea>
+        <div class="action-row">
+          <button class="inspect-btn" onclick="inspect()">▶ INSPECT PAYLOAD</button>
+          <button class="clear-btn" onclick="clearInput()">✕ CLEAR</button>
+        </div>
+        <div class="payloads-label">Quick-Load Attack Payloads</div>
+        <div class="payload-chips" id="payloadChips"></div>
+      </div>
+
+      <div>
+        <div class="input-label">WAF Analysis Result</div>
+        <div class="result-panel" id="resultPanel">
+          <div class="waiting">▌ AWAITING PAYLOAD INPUT</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rules -->
+  <div class="panel" id="panel-rules">
+    <div class="rules-grid" id="rulesGrid"></div>
+  </div>
+
+  <!-- Bypasses -->
+  <div class="panel" id="panel-bypasses">
+    <div class="bypass-grid" id="bypassGrid"></div>
+  </div>
+</div>
+
+<script>
+let currentMode = 'prevention';
+let blockedCount = 0;
+let allowedCount = 0;
+let allPayloads = {};
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('st-mode').textContent = mode.toUpperCase();
+  document.getElementById('btnPrev').className = 'mode-btn' + (mode==='prevention' ? ' active prevention' : '');
+  document.getElementById('btnDet').className  = 'mode-btn' + (mode==='detection'  ? ' active detection'  : '');
+}
+
+function showTab(name, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function clearInput() {
+  document.getElementById('payloadInput').value = '';
+  document.getElementById('resultPanel').innerHTML = '<div class="waiting">▌ AWAITING PAYLOAD INPUT</div>';
+}
+
+function loadPayload(key) {
+  if (allPayloads[key]) {
+    document.getElementById('payloadInput').value = allPayloads[key];
+    inspect();
+  }
+}
+
+async function inspect() {
+  const payload = document.getElementById('payloadInput').value.trim();
+  if (!payload) return;
+
+  document.getElementById('resultPanel').innerHTML = '<div class="waiting">▌ ANALYSING...</div>';
+
+  try {
+    const r = await fetch('/api/inspect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payload, mode: currentMode })
+    });
+    const d = await r.json();
+
+    if (d.verdict === 'MALICIOUS') {
+      blockedCount++;
+      document.getElementById('st-blocked').textContent = blockedCount;
+    } else {
+      allowedCount++;
+      document.getElementById('st-allowed').textContent = allowedCount;
+    }
+
+    const actionClass = d.action.startsWith('BLOCKED') ? 'BLOCKED' : d.action.startsWith('LOGGED') ? 'LOGGED' : 'ALLOWED';
+
+    let body = '';
+    if (d.triggered_rules.length === 0) {
+      body = `<div class="clean-result"><div class="clean-icon">✅</div><div class="clean-text">NO RULES TRIGGERED — REQUEST ALLOWED</div></div>`;
+    } else {
+      body = `
+        <div class="result-stat-row">
+          <div class="result-stat">Rules triggered: <span>${d.rules_triggered}</span></div>
+          <div class="result-stat">Rules checked: <span>${d.rules_checked}</span></div>
+          <div class="result-stat">Highest severity: <span style="color:var(--red)">${d.highest_severity}</span></div>
+          <div class="result-stat">Scanned at: <span>${d.timestamp}</span></div>
+        </div>
+        <div class="triggered-label">Triggered Rules</div>
+        ${d.triggered_rules.map(t => `
+          <div class="triggered-rule">
+            <div class="tr-top">
+              <span class="tr-id">${t.rule_id}</span>
+              <span class="tr-name">${t.rule_name}</span>
+              <span class="tr-sev ${t.severity}">${t.severity}</span>
+            </div>
+            <div><span class="tr-matched">Matched: ${t.matched_text}</span></div>
+            <div class="tr-desc">${t.description} <span style="color:var(--muted);font-size:11px">[${t.cve_ref}]</span></div>
+          </div>`).join('')}`;
+    }
+
+    document.getElementById('resultPanel').innerHTML = `
+      <div class="result-header">
+        <span class="result-verdict ${actionClass}">${d.verdict}</span>
+        <span class="result-action">${d.action}</span>
+      </div>
+      <div class="result-body">${body}</div>`;
+  } catch(e) {
+    document.getElementById('resultPanel').innerHTML = '<div class="waiting">▌ ERROR — IS FLASK RUNNING?</div>';
+  }
+}
+
+async function loadRules() {
+  try {
+    const r = await fetch('/api/rules');
+    const rules = await r.json();
+    document.getElementById('rulesGrid').innerHTML = rules.map(rule => `
+      <div class="rule-row">
+        <div class="rule-id">${rule.id}</div>
+        <div class="rule-name">${rule.name}</div>
+        <div class="rule-cat">${rule.category}</div>
+        <div class="rule-desc">${rule.description} <span style="color:var(--muted);font-size:10px">[${rule.cve_ref}]</span></div>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function loadBypasses() {
+  try {
+    const r = await fetch('/api/bypasses');
+    const bypasses = await r.json();
+    document.getElementById('bypassGrid').innerHTML = bypasses.map(b => `
+      <div class="bypass-card">
+        <div class="bypass-name">⚡ ${b.name}</div>
+        <div class="bypass-desc">${b.description}</div>
+        <div class="code-compare">
+          <div class="code-row">
+            <span class="code-label">ORIGINAL</span>
+            <span class="code-val original">${b.original}</span>
+          </div>
+          <div class="code-row">
+            <span class="code-label">BYPASS</span>
+            <span class="code-val bypass">${b.bypass}</span>
+          </div>
+        </div>
+        <div class="bypass-mitig">${b.mitigation}</div>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function loadPayloads() {
+  try {
+    const r = await fetch('/api/payloads');
+    allPayloads = await r.json();
+
+    const attackKeys = ['sqli_classic','sqli_union','sqli_blind','xss_script','xss_event','path_traversal','cmd_injection','ssrf','xxe'];
+    const bypassKeys = ['bypass_case','bypass_encode','bypass_comment'];
+
+    const chips = document.getElementById('payloadChips');
+    chips.innerHTML = attackKeys.map(k =>
+      `<button class="payload-chip attack" onclick="loadPayload('${k}')">${k.replace(/_/g,' ')}</button>`
+    ).join('') + `<button class="payload-chip safe" onclick="loadPayload('safe')">✓ safe input</button>` +
+    bypassKeys.map(k =>
+      `<button class="payload-chip bypass" onclick="loadPayload('${k}')">${k.replace('bypass_','')} bypass</button>`
+    ).join('');
+  } catch(e) {}
+}
+
+loadRules();
+loadBypasses();
+loadPayloads();
+</script>
+</body>
+</html>
